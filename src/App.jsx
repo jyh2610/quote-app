@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Plus, Trash2, FileSpreadsheet, RotateCcw } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet, RotateCcw, Eye, X } from "lucide-react";
 import ExcelJS from "exceljs";
 
 let uidCounter = 1;
@@ -81,11 +81,44 @@ function itemAmount(item, orderQty) {
   return item.amortize ? amt / (num(orderQty) || 1) : amt;
 }
 
+// Flattens groups into item rows, marking where the major/sub columns
+// should start a merged span. Shared by the Excel export and the preview
+// so both always show exactly the same layout.
+function buildQuoteRows(groups) {
+  const rows = [];
+  const groupMeta = [];
+  groups.forEach((g) => {
+    const items = g.items.length ? g.items : [null];
+    const startIndex = rows.length;
+    items.forEach((item) => {
+      rows.push({ major: g.major, sub: g.sub, item });
+    });
+    rows[startIndex].groupStart = true;
+    rows[startIndex].groupSpan = items.length;
+    groupMeta.push({ major: g.major, startIndex, rowCount: items.length });
+  });
+
+  let i = 0;
+  while (i < groupMeta.length) {
+    let j = i;
+    let total = groupMeta[i].rowCount;
+    while (j + 1 < groupMeta.length && groupMeta[j + 1].major === groupMeta[i].major) {
+      j++;
+      total += groupMeta[j].rowCount;
+    }
+    rows[groupMeta[i].startIndex].majorStart = true;
+    rows[groupMeta[i].startIndex].majorSpan = total;
+    i = j + 1;
+  }
+  return rows;
+}
+
 export default function App() {
   const [header, setHeader] = useState(loadStoredHeader);
   const [groups, setGroups] = useState(loadStoredGroups);
   const [freight, setFreight] = useState("1000");
   const [marginRate, setMarginRate] = useState("15");
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     try {
@@ -252,45 +285,36 @@ export default function App() {
 
     // Item rows, grouped by major/sub like the reference sheet
     let r = 9;
-    const groupRanges = [];
-    groups.forEach((g) => {
-      const itemRows = g.items.length ? g.items : [null];
-      const start = r;
-      itemRows.forEach((it) => {
-        if (it) {
-          setCell(`C${r}`, it.name, { align: "left" });
-          setCell(`D${r}`, it.unit);
-          input(`E${r}`, num(it.price), { numeric: true, align: "right", numFmt: "#,##0" });
-          input(`F${r}`, num(it.qty), { numeric: true, align: "right", numFmt: "#,##0.00" });
-          const formula = it.amortize ? `E${r}*F${r}/$B$5` : `E${r}*F${r}`;
-          setCell(`G${r}`, { formula }, { align: "right", numFmt: "#,##0" });
-        } else {
-          setCell(`C${r}`, "");
-          setCell(`D${r}`, "");
-          setCell(`E${r}`, "");
-          setCell(`F${r}`, "");
-          setCell(`G${r}`, "");
-        }
-        r++;
-      });
-      const end = r - 1;
-      if (start !== end) ws.mergeCells(`B${start}:B${end}`);
-      label(`B${start}`, g.sub);
-      groupRanges.push({ major: g.major, start, end });
+    const quoteRows = buildQuoteRows(groups);
+    quoteRows.forEach((row) => {
+      const it = row.item;
+      if (it) {
+        setCell(`C${r}`, it.name, { align: "left" });
+        setCell(`D${r}`, it.unit);
+        input(`E${r}`, num(it.price), { numeric: true, align: "right", numFmt: "#,##0" });
+        input(`F${r}`, num(it.qty), { numeric: true, align: "right", numFmt: "#,##0.00" });
+        const formula = it.amortize ? `E${r}*F${r}/$B$5` : `E${r}*F${r}`;
+        setCell(`G${r}`, { formula }, { align: "right", numFmt: "#,##0" });
+      } else {
+        setCell(`C${r}`, "");
+        setCell(`D${r}`, "");
+        setCell(`E${r}`, "");
+        setCell(`F${r}`, "");
+        setCell(`G${r}`, "");
+      }
+      if (row.groupStart) {
+        const end = r + row.groupSpan - 1;
+        if (r !== end) ws.mergeCells(`B${r}:B${end}`);
+        label(`B${r}`, row.sub);
+      }
+      if (row.majorStart) {
+        const end = r + row.majorSpan - 1;
+        if (r !== end) ws.mergeCells(`A${r}:A${end}`);
+        label(`A${r}`, row.major);
+      }
+      r++;
     });
     const lastItemRow = r - 1;
-
-    // Merge the major column across consecutive groups sharing the same major
-    let i = 0;
-    while (i < groupRanges.length) {
-      let j = i;
-      while (j + 1 < groupRanges.length && groupRanges[j + 1].major === groupRanges[i].major) j++;
-      const { start } = groupRanges[i];
-      const { end } = groupRanges[j];
-      if (start !== end) ws.mergeCells(`A${start}:A${end}`);
-      label(`A${start}`, groupRanges[i].major);
-      i = j + 1;
-    }
 
     // Totals
     const pcRow = r;
@@ -538,6 +562,12 @@ export default function App() {
             <RotateCcw size={18} /> 초기값으로
           </button>
           <button
+            onClick={() => setShowPreview(true)}
+            className="flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
+          >
+            <Eye size={18} /> 엑셀 미리보기
+          </button>
+          <button
             onClick={exportToExcel}
             className="flex items-center justify-center gap-2 text-base font-medium bg-stone-800 text-white px-6 py-3 rounded-lg hover:bg-stone-700"
           >
@@ -553,6 +583,20 @@ export default function App() {
           {won(supplyAmount)}원
         </span>
       </div>
+
+      {showPreview && (
+        <ExcelPreviewModal
+          header={header}
+          groups={groups}
+          freight={freightNum}
+          marginRate={marginRate}
+          productionCost={productionCost}
+          marginAmount={marginAmount}
+          supplyAmount={supplyAmount}
+          onClose={() => setShowPreview(false)}
+          onDownload={exportToExcel}
+        />
+      )}
     </div>
   );
 }
@@ -580,6 +624,153 @@ function TotalRow({ label, value }) {
     <div className="flex items-center justify-between py-3">
       <span className="text-base text-stone-600">{label}</span>
       <span className="text-base font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function ExcelPreviewModal({
+  header,
+  groups,
+  freight,
+  marginRate,
+  productionCost,
+  marginAmount,
+  supplyAmount,
+  onClose,
+  onDownload,
+}) {
+  const rows = buildQuoteRows(groups);
+  const LABEL = "border border-stone-400 bg-stone-200 font-medium text-center px-2 py-1.5 align-middle";
+  const VALUE = "border border-stone-400 bg-yellow-50 px-2 py-1.5 align-middle";
+  const PLAIN = "border border-stone-400 bg-white px-2 py-1.5 align-middle";
+  const TOTAL_LABEL = "border border-stone-400 bg-stone-100 font-medium text-center px-2 py-1.5 align-middle";
+  const TOTAL_VALUE = "border border-stone-400 bg-stone-100 text-right font-semibold px-2 py-1.5 align-middle";
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-6 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg w-full max-w-4xl max-h-full flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 shrink-0">
+          <h2 className="text-lg font-semibold text-stone-900">엑셀 미리보기</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 p-1" aria-label="닫기">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="overflow-auto p-3 sm:p-4">
+          <table className="w-full border-collapse text-sm tabular-nums">
+            <tbody>
+              <tr>
+                <td colSpan={7} className="border border-stone-400 bg-white text-center text-xl font-bold py-3">
+                  견 적 서
+                </td>
+              </tr>
+              <tr>
+                <td className={LABEL}>품명</td>
+                <td colSpan={2} className={VALUE}>{header.productName}</td>
+                <td className={LABEL}>등록번호</td>
+                <td colSpan={3} className={VALUE}>{header.regNo}</td>
+              </tr>
+              <tr>
+                <td className={LABEL}>STYLE No</td>
+                <td colSpan={2} className={VALUE}>{header.styleNo}</td>
+                <td className={LABEL}>상호</td>
+                <td className={VALUE}>{header.company}</td>
+                <td className={LABEL}>성명</td>
+                <td className={VALUE}>{header.ceoName}</td>
+              </tr>
+              <tr>
+                <td className={LABEL}>발주량</td>
+                <td colSpan={2} className={VALUE + " text-right"}>{header.orderQty}</td>
+                <td className={LABEL}>사업장주소</td>
+                <td colSpan={3} className={VALUE}>{header.address}</td>
+              </tr>
+              <tr>
+                <td className={LABEL}>COLOR</td>
+                <td colSpan={2} className={VALUE}>{header.color}</td>
+                <td className={LABEL}>업태</td>
+                <td className={VALUE}>{header.bizType}</td>
+                <td className={LABEL}>종목</td>
+                <td className={VALUE}>{header.category}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} className={LABEL}>구분</td>
+                <td className={LABEL}>소재</td>
+                <td className={LABEL}>단가</td>
+                <td className={LABEL}>소요량</td>
+                <td className={LABEL}>금액</td>
+              </tr>
+              {rows.map((row, idx) => (
+                <tr key={idx}>
+                  {row.majorStart && (
+                    <td rowSpan={row.majorSpan} className={PLAIN + " text-center font-medium"}>
+                      {row.major}
+                    </td>
+                  )}
+                  {row.groupStart && (
+                    <td rowSpan={row.groupSpan} className={PLAIN + " text-center"}>
+                      {row.sub}
+                    </td>
+                  )}
+                  <td className={PLAIN}>{row.item?.name}</td>
+                  <td className={PLAIN + " text-center"}>{row.item?.unit}</td>
+                  <td className={VALUE + " text-right"}>{row.item ? won(num(row.item.price)) : ""}</td>
+                  <td className={VALUE + " text-right"}>{row.item ? row.item.qty : ""}</td>
+                  <td className={PLAIN + " text-right"}>
+                    {row.item ? won(itemAmount(row.item, header.orderQty)) : ""}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td colSpan={6} className={TOTAL_LABEL}>생산원가</td>
+                <td className={TOTAL_VALUE}>{won(productionCost)}</td>
+              </tr>
+              <tr>
+                <td colSpan={6} className={TOTAL_LABEL}>운임비</td>
+                <td className={VALUE + " text-right"}>{won(freight)}</td>
+              </tr>
+              <tr>
+                <td colSpan={5} className={TOTAL_LABEL}>업체마진</td>
+                <td className={VALUE + " text-center"}>{marginRate}%</td>
+                <td className={TOTAL_VALUE}>{won(marginAmount)}</td>
+              </tr>
+              <tr>
+                <td colSpan={5} rowSpan={2} className={LABEL}>DESIGN</td>
+                <td colSpan={2} className="border border-stone-400 bg-yellow-50 px-2 py-3">&nbsp;</td>
+              </tr>
+              <tr>
+                <td className={LABEL}>공급가액</td>
+                <td className={TOTAL_VALUE + " text-lg font-bold"}>{won(supplyAmount)}</td>
+              </tr>
+              <tr>
+                <td colSpan={7} className="border border-stone-400 bg-white text-xs text-stone-500 px-2 py-1.5">
+                  ※ 노란색 칸: 단가/소요량/운임비/마진율 입력란 (수정 가능) · 금액·생산원가·업체마진·공급가액은 자동 계산됩니다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex justify-end gap-3 px-4 py-3 border-t border-stone-200 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-lg border border-stone-300 text-stone-600 hover:bg-stone-50"
+          >
+            닫기
+          </button>
+          <button
+            onClick={onDownload}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-stone-800 text-white hover:bg-stone-700"
+          >
+            <FileSpreadsheet size={18} /> 엑셀로 저장
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
