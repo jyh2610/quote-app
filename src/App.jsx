@@ -1,22 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Printer, RotateCcw } from "lucide-react";
 
-const uid = (() => {
-  let n = 1;
-  return () => n++;
-})();
+let uidCounter = 1;
+const uid = () => uidCounter++;
+const advanceUidPast = (id) => {
+  if (typeof id === "number" && id >= uidCounter) uidCounter = id + 1;
+};
+
+const HEADER_STORAGE_KEY = "quote-app-header";
+const GROUPS_STORAGE_KEY = "quote-app-groups";
 
 const initialHeader = {
-  productName: "모조",
-  regNo: "132-26-08901",
-  styleNo: "앵글부츠",
-  company: "헨느(reine)",
-  ceoName: "김준배",
-  orderQty: "150",
-  address: "서울시 성동구 상원6길 10-1(성수동1가,2가)",
-  color: "2칼라",
-  bizType: "제조도소매업",
-  category: "신발",
+  productName: "",
+  regNo: "",
+  styleNo: "",
+  company: "",
+  ceoName: "",
+  orderQty: "",
+  address: "",
+  color: "",
+  bizType: "",
+  category: "",
+};
+
+const loadStoredHeader = () => {
+  try {
+    const raw = localStorage.getItem(HEADER_STORAGE_KEY);
+    if (!raw) return initialHeader;
+    return { ...initialHeader, ...JSON.parse(raw) };
+  } catch {
+    return initialHeader;
+  }
 };
 
 const seedItem = (name, unit, price, qty, amortize) => ({
@@ -29,73 +43,29 @@ const seedItem = (name, unit, price, qty, amortize) => ({
 });
 
 const initialGroups = [
-  {
-    id: uid(),
-    major: "원자재",
-    sub: "외피",
-    items: [seedItem("카프", "평", 5400, 6.7)],
-  },
-  {
-    id: uid(),
-    major: "원자재",
-    sub: "내피",
-    items: [
-      seedItem("합성", "YD", 9000, 0.35),
-      seedItem("돈갑포", "족", 1750, 1),
-    ],
-  },
-  {
-    id: uid(),
-    major: "부자재",
-    sub: "지부재",
-    items: [
-      seedItem("세피본창", "족", 6000, 1),
-      seedItem("보강중창", "족", 4000, 1),
-      seedItem("사각까래", "족", 3500, 1),
-      seedItem("굽", "족", 2800, 1),
-    ],
-  },
-  {
-    id: uid(),
-    major: "부자재",
-    sub: "보강재",
-    items: [
-      seedItem("쿠션", "족", 500, 1),
-      seedItem("목접착재", "족", 3000, 1),
-      seedItem("봉재미싱", "족", 3000, 1),
-      seedItem("월형", "족", 1000, 1),
-      seedItem("선심", "족", 500, 1),
-      seedItem("보강천", "족", 1500, 1),
-    ],
-  },
-  {
-    id: uid(),
-    major: "부자재",
-    sub: "기타",
-    items: [
-      seedItem("사상재", "족", 1000, 1),
-      seedItem("쇠지퍼", "set", 3800, 2),
-      seedItem("지퍼손잡이", "본사", 0, 2),
-      seedItem("박스", "EA", 2000, 1),
-      seedItem("갑피철형", "벌", 80000, 3, true),
-      seedItem("미싱공임추가", "족", 3000, 1),
-      seedItem("이단하리", "족", 2800, 1),
-    ],
-  },
-  {
-    id: uid(),
-    major: "추가비용",
-    sub: "가공비",
-    items: [
-      seedItem("재단", "족", 4000, 1),
-      seedItem("재갑", "족", 12000, 1),
-      seedItem("조립", "족", 13000, 1),
-      seedItem("사상", "족", 1000, 1),
-      seedItem("철형", "족", 10000, 9, true),
-      seedItem("LAST", "족", 15000, 48, true),
-    ],
-  },
+  { id: uid(), major: "원자재", sub: "외피", items: [] },
+  { id: uid(), major: "원자재", sub: "내피", items: [] },
+  { id: uid(), major: "부자재", sub: "지부재", items: [] },
+  { id: uid(), major: "부자재", sub: "보강재", items: [] },
+  { id: uid(), major: "부자재", sub: "기타", items: [] },
+  { id: uid(), major: "추가비용", sub: "가공비", items: [] },
 ];
+
+const loadStoredGroups = () => {
+  try {
+    const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
+    if (!raw) return initialGroups;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return initialGroups;
+    parsed.forEach((g) => {
+      advanceUidPast(g.id);
+      (g.items || []).forEach((it) => advanceUidPast(it.id));
+    });
+    return parsed;
+  } catch {
+    return initialGroups;
+  }
+};
 
 const num = (v) => {
   const n = parseFloat(String(v).replace(/,/g, ""));
@@ -111,10 +81,26 @@ function itemAmount(item, orderQty) {
 }
 
 export default function App() {
-  const [header, setHeader] = useState(initialHeader);
-  const [groups, setGroups] = useState(initialGroups);
+  const [header, setHeader] = useState(loadStoredHeader);
+  const [groups, setGroups] = useState(loadStoredGroups);
   const [freight, setFreight] = useState("1000");
   const [marginRate, setMarginRate] = useState("15");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HEADER_STORAGE_KEY, JSON.stringify(header));
+    } catch {
+      // ignore storage failures (e.g. private browsing)
+    }
+  }, [header]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(groups));
+    } catch {
+      // ignore storage failures (e.g. private browsing)
+    }
+  }, [groups]);
 
   const setHeaderField = (key) => (e) =>
     setHeader((h) => ({ ...h, [key]: e.target.value }));
