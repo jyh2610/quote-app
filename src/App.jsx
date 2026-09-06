@@ -417,19 +417,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="sm:hidden text-xs text-stone-400 px-3 pt-2 print:hidden">
-                ← 옆으로 밀면 전체 항목이 보여요
-              </div>
-              <div className="overflow-x-auto">
+              {/* Desktop/tablet: a real table matching the Excel columns */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full border-collapse text-base">
                   <thead>
                     <tr className="bg-stone-100 text-stone-600">
-                      <th className="border border-stone-300 py-2.5 px-2 text-left font-medium min-w-[100px] sm:min-w-[140px]">품목</th>
-                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[70px] sm:min-w-[90px]">소재</th>
-                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[85px] sm:min-w-[110px]">단가</th>
-                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[70px] sm:min-w-[90px]">소요량</th>
-                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[85px] sm:min-w-[110px]">금액</th>
-                      <th className="border border-stone-300 py-2.5 px-2 w-10 sm:w-12 print:hidden"></th>
+                      <th className="border border-stone-300 py-2.5 px-2 text-left font-medium min-w-[140px]">품목</th>
+                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[90px]">소재</th>
+                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[110px]">단가</th>
+                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[90px]">소요량</th>
+                      <th className="border border-stone-300 py-2.5 px-2 font-medium min-w-[110px]">금액</th>
+                      <th className="border border-stone-300 py-2.5 px-2 w-12 print:hidden"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -505,6 +503,22 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile: one field per line, no side-scrolling */}
+              <div className="sm:hidden p-3 space-y-3">
+                {g.items.length === 0 && (
+                  <div className="text-center text-stone-400 py-3">아래 버튼으로 항목을 추가하세요</div>
+                )}
+                {g.items.map((it) => (
+                  <MobileItemCard
+                    key={it.id}
+                    item={it}
+                    orderQty={header.orderQty}
+                    onChange={(key, value) => updateItem(g.id, it.id, key, value)}
+                    onRemove={() => removeItem(g.id, it.id)}
+                  />
+                ))}
               </div>
 
               <button
@@ -613,6 +627,83 @@ function InfoField({ label, value, onChange, accent }) {
           (accent ? "bg-amber-50 focus:bg-amber-100" : "bg-white focus:bg-stone-50")
         }
         value={value}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+function MobileItemCard({ item, orderQty, onChange, onRemove }) {
+  return (
+    <div className="border border-stone-300 rounded-lg overflow-hidden print:hidden">
+      <div className="divide-y divide-stone-200">
+        <MobileField
+          label="품목"
+          value={item.name}
+          placeholder="품목명"
+          onChange={(e) => onChange("name", e.target.value)}
+        />
+        <MobileField
+          label="소재"
+          value={item.unit}
+          placeholder="단위"
+          onChange={(e) => onChange("unit", e.target.value)}
+        />
+        <MobileField
+          label="단가"
+          value={item.price}
+          onChange={(e) => onChange("price", e.target.value)}
+          inputMode="decimal"
+          accent
+        />
+        <MobileField
+          label="소요량"
+          value={item.qty}
+          onChange={(e) => onChange("qty", e.target.value)}
+          inputMode="decimal"
+          accent
+        />
+      </div>
+
+      <div className="flex items-center justify-between px-3 py-2.5 bg-stone-50 border-t border-stone-200">
+        <span className="text-sm text-stone-500">금액</span>
+        <span className="text-lg font-semibold tabular-nums">{won(itemAmount(item, orderQty))}원</span>
+      </div>
+
+      <label className="flex items-center gap-2 px-3 py-2.5 text-sm text-stone-600 border-t border-stone-200">
+        <input
+          type="checkbox"
+          checked={item.amortize}
+          onChange={(e) => onChange("amortize", e.target.checked)}
+          className="w-4 h-4 accent-amber-700 shrink-0"
+        />
+        발주량({orderQty || 0})으로 나눠서 계산 (1회성 비용일 때 체크)
+      </label>
+
+      <button
+        onClick={onRemove}
+        className="w-full flex items-center justify-center gap-1.5 text-red-500 text-sm py-2.5 border-t border-stone-200 hover:bg-red-50"
+      >
+        <Trash2 size={16} /> 이 항목 삭제
+      </button>
+    </div>
+  );
+}
+
+function MobileField({ label, value, onChange, placeholder, inputMode, accent }) {
+  return (
+    <div className="flex items-stretch">
+      <div className="shrink-0 w-20 flex items-center justify-center bg-stone-100 text-stone-600 text-sm font-medium text-center">
+        {label}
+      </div>
+      <input
+        className={
+          "flex-1 min-w-0 outline-none px-3 py-2.5 text-base " +
+          (accent ? "bg-amber-50 focus:bg-amber-100 text-right tabular-nums" : "bg-white focus:bg-stone-50")
+        }
+        value={value}
+        placeholder={placeholder}
+        inputMode={inputMode}
         onChange={onChange}
       />
     </div>
