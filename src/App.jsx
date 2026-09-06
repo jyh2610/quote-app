@@ -366,26 +366,18 @@ export default function App() {
           </p>
         </div>
 
-        {/* Header info, laid out like the Excel sheet's label/value boxes */}
-        <div className="bg-white border border-stone-300 rounded-lg p-3 mb-6 space-y-2 print:border-stone-800">
-          <InfoRow>
-            <InfoField label="품명" value={header.productName} onChange={setHeaderField("productName")} grow={2} />
-            <InfoField label="등록번호" value={header.regNo} onChange={setHeaderField("regNo")} grow={1} />
-          </InfoRow>
-          <InfoRow>
-            <InfoField label="STYLE No" value={header.styleNo} onChange={setHeaderField("styleNo")} />
-            <InfoField label="상호" value={header.company} onChange={setHeaderField("company")} />
-            <InfoField label="성명" value={header.ceoName} onChange={setHeaderField("ceoName")} />
-          </InfoRow>
-          <InfoRow>
-            <InfoField label="발주량" value={header.orderQty} onChange={setHeaderField("orderQty")} accent grow={1} />
-            <InfoField label="사업장주소" value={header.address} onChange={setHeaderField("address")} grow={3} />
-          </InfoRow>
-          <InfoRow>
-            <InfoField label="COLOR" value={header.color} onChange={setHeaderField("color")} />
-            <InfoField label="업태" value={header.bizType} onChange={setHeaderField("bizType")} />
-            <InfoField label="종목" value={header.category} onChange={setHeaderField("category")} />
-          </InfoRow>
+        {/* Header info: one field per line so every label/input lines up in a column */}
+        <div className="bg-white border border-stone-300 rounded-lg mb-6 overflow-hidden divide-y divide-stone-200 print:border-stone-800">
+          <InfoField label="품명" value={header.productName} onChange={setHeaderField("productName")} />
+          <InfoField label="등록번호" value={header.regNo} onChange={setHeaderField("regNo")} />
+          <InfoField label="STYLE No" value={header.styleNo} onChange={setHeaderField("styleNo")} />
+          <InfoField label="상호" value={header.company} onChange={setHeaderField("company")} />
+          <InfoField label="성명" value={header.ceoName} onChange={setHeaderField("ceoName")} />
+          <InfoField label="발주량" value={header.orderQty} onChange={setHeaderField("orderQty")} accent />
+          <InfoField label="사업장주소" value={header.address} onChange={setHeaderField("address")} />
+          <InfoField label="COLOR" value={header.color} onChange={setHeaderField("color")} />
+          <InfoField label="업태" value={header.bizType} onChange={setHeaderField("bizType")} />
+          <InfoField label="종목" value={header.category} onChange={setHeaderField("category")} />
         </div>
 
         {/* Item groups: a real table per group, columns matching the Excel sheet */}
@@ -565,22 +557,15 @@ export default function App() {
   );
 }
 
-function InfoRow({ children }) {
-  return <div className="flex flex-wrap gap-2">{children}</div>;
-}
-
-function InfoField({ label, value, onChange, grow = 1, accent }) {
+function InfoField({ label, value, onChange, accent }) {
   return (
-    <div
-      className="flex border border-stone-300 rounded-md overflow-hidden"
-      style={{ flex: `${grow} 1 160px` }}
-    >
-      <div className="shrink-0 w-24 sm:w-28 flex items-center justify-center bg-stone-100 text-stone-600 text-sm font-medium px-2 py-2 text-center">
+    <div className="flex items-stretch">
+      <div className="shrink-0 w-28 sm:w-36 flex items-center justify-center bg-stone-100 text-stone-600 text-sm sm:text-base font-medium px-2 py-3 text-center">
         {label}
       </div>
       <input
         className={
-          "w-full min-w-0 outline-none px-3 py-2 text-base print:bg-transparent " +
+          "flex-1 min-w-0 outline-none px-3 py-3 text-base print:bg-transparent " +
           (accent ? "bg-amber-50 focus:bg-amber-100" : "bg-white focus:bg-stone-50")
         }
         value={value}
