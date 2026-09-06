@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, FileSpreadsheet, RotateCcw } from "lucide-react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 let uidCounter = 1;
 const uid = () => uidCounter++;
@@ -156,48 +156,201 @@ export default function App() {
   const marginAmount = (productionCost + freightNum) * (num(marginRate) / 100);
   const supplyAmount = productionCost + freightNum + marginAmount;
 
-  const exportToExcel = () => {
-    const rows = [
-      ["견 적 서"],
-      [],
-      ["품명", header.productName, "", "등록번호", header.regNo],
-      ["STYLE No", header.styleNo, "", "상호", header.company],
-      ["발주량", header.orderQty, "", "성명", header.ceoName],
-      ["COLOR", header.color, "", "업태", header.bizType],
-      ["종목", header.category, "", "사업장주소", header.address],
-      [],
+  const exportToExcel = async () => {
+    const FONT = "맑은 고딕";
+    const GRAY = "FFD9D9D9";
+    const LGRAY = "FFF2F2F2";
+    const YELLOW = "FFFFFF99";
+    const BLUE = "FF0000FF";
+    const thin = { style: "thin" };
+    const allBorder = { top: thin, bottom: thin, left: thin, right: thin };
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("견적서", { views: [{ state: "frozen", ySplit: 8 }] });
+    ws.columns = [
+      { width: 10 },
+      { width: 12 },
+      { width: 16 },
+      { width: 10 },
+      { width: 12 },
+      { width: 10 },
+      { width: 13 },
     ];
 
+    const setCell = (addr, value, opts = {}) => {
+      const cell = ws.getCell(addr);
+      cell.value = value;
+      cell.font = {
+        name: FONT,
+        size: opts.size || 11,
+        bold: !!opts.bold,
+        color: opts.color ? { argb: opts.color } : undefined,
+      };
+      cell.alignment = {
+        horizontal: opts.align || "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = allBorder;
+      if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
+      if (opts.numFmt) cell.numFmt = opts.numFmt;
+      return cell;
+    };
+
+    const label = (addr, text, opts = {}) => setCell(addr, text, { bold: true, fill: GRAY, ...opts });
+    const input = (addr, value, opts = {}) =>
+      setCell(addr, value, { fill: YELLOW, color: opts.numeric ? BLUE : undefined, ...opts });
+
+    // Title
+    ws.mergeCells("A1:G1");
+    setCell("A1", "견 적 서", { size: 20, bold: true });
+    ws.getRow(1).height = 36;
+
+    // Header info block
+    ws.mergeCells("B3:C3");
+    ws.mergeCells("E3:G3");
+    label("A3", "품명");
+    input("B3", header.productName);
+    label("D3", "등록번호");
+    input("E3", header.regNo);
+
+    ws.mergeCells("B4:C4");
+    label("A4", "STYLE No");
+    input("B4", header.styleNo);
+    label("D4", "상호");
+    input("E4", header.company);
+    label("F4", "성명");
+    input("G4", header.ceoName);
+
+    ws.mergeCells("B5:C5");
+    ws.mergeCells("E5:G5");
+    label("A5", "발주량");
+    input("B5", num(header.orderQty), { numeric: true, numFmt: "#,##0" });
+    label("D5", "사업장주소");
+    input("E5", header.address, { align: "left" });
+
+    ws.mergeCells("B6:C6");
+    label("A6", "COLOR");
+    input("B6", header.color);
+    label("D6", "업태");
+    input("E6", header.bizType);
+    label("F6", "종목");
+    input("G6", header.category);
+
+    ws.getRow(3).height = 20;
+    ws.getRow(4).height = 20;
+    ws.getRow(5).height = 26;
+    ws.getRow(6).height = 20;
+
+    // Column headers
+    ws.mergeCells("A8:C8");
+    label("A8", "구분");
+    label("D8", "소재");
+    label("E8", "단가");
+    label("F8", "소요량");
+    label("G8", "금액");
+
+    // Item rows, grouped by major/sub like the reference sheet
+    let r = 9;
+    const groupRanges = [];
     groups.forEach((g) => {
-      rows.push([`${g.major} / ${g.sub}`]);
-      rows.push(["품목", "소재", "단가", "소요량", "금액"]);
-      g.items.forEach((it) => {
-        rows.push([
-          it.name,
-          it.unit,
-          num(it.price),
-          num(it.qty),
-          Math.round(itemAmount(it, header.orderQty)),
-        ]);
+      const itemRows = g.items.length ? g.items : [null];
+      const start = r;
+      itemRows.forEach((it) => {
+        if (it) {
+          setCell(`C${r}`, it.name, { align: "left" });
+          setCell(`D${r}`, it.unit);
+          input(`E${r}`, num(it.price), { numeric: true, align: "right", numFmt: "#,##0" });
+          input(`F${r}`, num(it.qty), { numeric: true, align: "right", numFmt: "#,##0.00" });
+          const formula = it.amortize ? `E${r}*F${r}/$B$5` : `E${r}*F${r}`;
+          setCell(`G${r}`, { formula }, { align: "right", numFmt: "#,##0" });
+        } else {
+          setCell(`C${r}`, "");
+          setCell(`D${r}`, "");
+          setCell(`E${r}`, "");
+          setCell(`F${r}`, "");
+          setCell(`G${r}`, "");
+        }
+        r++;
       });
-      rows.push(["", "", "", "소계", Math.round(groupSubtotal(g))]);
-      rows.push([]);
+      const end = r - 1;
+      if (start !== end) ws.mergeCells(`B${start}:B${end}`);
+      label(`B${start}`, g.sub);
+      groupRanges.push({ major: g.major, start, end });
     });
+    const lastItemRow = r - 1;
 
-    rows.push(["생산원가", "", "", "", Math.round(productionCost)]);
-    rows.push(["운임비", "", "", "", freightNum]);
-    rows.push([`업체마진 (${marginRate}%)`, "", "", "", Math.round(marginAmount)]);
-    rows.push(["공급가액", "", "", "", Math.round(supplyAmount)]);
+    // Merge the major column across consecutive groups sharing the same major
+    let i = 0;
+    while (i < groupRanges.length) {
+      let j = i;
+      while (j + 1 < groupRanges.length && groupRanges[j + 1].major === groupRanges[i].major) j++;
+      const { start } = groupRanges[i];
+      const { end } = groupRanges[j];
+      if (start !== end) ws.mergeCells(`A${start}:A${end}`);
+      label(`A${start}`, groupRanges[i].major);
+      i = j + 1;
+    }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "견적서");
+    // Totals
+    const pcRow = r;
+    ws.mergeCells(`A${pcRow}:F${pcRow}`);
+    label(`A${pcRow}`, "생산원가", { fill: LGRAY });
+    setCell(`G${pcRow}`, { formula: `SUM(G9:G${lastItemRow})` }, { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" });
+    r++;
 
-    const filename = header.productName
-      ? `견적서_${header.productName}.xlsx`
-      : "견적서.xlsx";
-    XLSX.writeFile(wb, filename);
+    const frRow = r;
+    ws.mergeCells(`A${frRow}:F${frRow}`);
+    label(`A${frRow}`, "운임비", { fill: LGRAY });
+    input(`G${frRow}`, freightNum, { numeric: true, align: "right", numFmt: "#,##0" });
+    r++;
+
+    const mgRow = r;
+    ws.mergeCells(`A${mgRow}:E${mgRow}`);
+    label(`A${mgRow}`, "업체마진", { fill: LGRAY });
+    input(`F${mgRow}`, num(marginRate) / 100, { numeric: true, numFmt: "0%" });
+    setCell(`G${mgRow}`, { formula: `(G${pcRow}+G${frRow})*F${mgRow}` }, { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" });
+    r += 2; // spacer row
+
+    // DESIGN / 기타사항 / 공급가액 block
+    const designRow = r;
+    ws.mergeCells(`A${designRow}:B${designRow + 1}`);
+    label(`A${designRow}`, "DESIGN");
+    ws.mergeCells(`C${designRow}:D${designRow}`);
+    input(`C${designRow}`, "");
+    ws.mergeCells(`C${designRow + 1}:D${designRow + 1}`);
+    input(`C${designRow + 1}`, "");
+    ws.mergeCells(`E${designRow}:G${designRow}`);
+    label(`E${designRow}`, "기타사항");
+    label(`E${designRow + 1}`, "공급가액");
+    ws.mergeCells(`F${designRow + 1}:G${designRow + 1}`);
+    setCell(
+      `F${designRow + 1}`,
+      { formula: `G${pcRow}+G${frRow}+G${mgRow}` },
+      { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" }
+    );
+
+    const noteRow = designRow + 2;
+    ws.mergeCells(`A${noteRow}:G${noteRow}`);
+    setCell(
+      `A${noteRow}`,
+      "※ 노란색 칸: 단가/소요량/운임비/마진율 입력란 (수정 가능) · 금액·생산원가·업체마진·공급가액은 자동 계산됩니다.",
+      { align: "left", size: 9 }
+    );
+    ws.getRow(noteRow).height = 26;
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = header.productName ? `견적서_${header.productName}.xlsx` : "견적서.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
