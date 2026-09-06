@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Plus, Trash2, FileSpreadsheet, RotateCcw, Eye, X } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet, RotateCcw, Eye, X, Mail } from "lucide-react";
 import ExcelJS from "exceljs";
 
 let uidCounter = 1;
@@ -10,6 +10,7 @@ const advanceUidPast = (id) => {
 
 const HEADER_STORAGE_KEY = "quote-app-header";
 const GROUPS_STORAGE_KEY = "quote-app-groups";
+const EMAIL_STORAGE_KEY = "quote-app-recipient-email";
 
 const initialHeader = {
   productName: "",
@@ -119,6 +120,13 @@ export default function App() {
   const [freight, setFreight] = useState("1000");
   const [marginRate, setMarginRate] = useState("15");
   const [showPreview, setShowPreview] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState(() => {
+    try {
+      return localStorage.getItem(EMAIL_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
 
   useEffect(() => {
     try {
@@ -135,6 +143,14 @@ export default function App() {
       // ignore storage failures (e.g. private browsing)
     }
   }, [groups]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EMAIL_STORAGE_KEY, recipientEmail);
+    } catch {
+      // ignore storage failures (e.g. private browsing)
+    }
+  }, [recipientEmail]);
 
   const setHeaderField = (key) => (e) =>
     setHeader((h) => ({ ...h, [key]: e.target.value }));
@@ -377,6 +393,33 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const sendByEmail = async () => {
+    await exportToExcel();
+
+    const subject = `견적서${header.productName ? ` - ${header.productName}` : ""}${
+      header.company ? ` (${header.company})` : ""
+    }`;
+    const body = [
+      header.company ? `${header.company} 담당자님께,` : "안녕하세요,",
+      "",
+      "견적서를 보내드립니다. 첨부된 엑셀 파일을 확인해 주세요.",
+      "",
+      `- 품명: ${header.productName || "-"}`,
+      `- STYLE No: ${header.styleNo || "-"}`,
+      `- 발주량: ${header.orderQty || "-"}`,
+      `- 공급가액: ${won(supplyAmount)}원`,
+      "",
+      "감사합니다.",
+    ].join("\n");
+
+    window.alert(
+      "엑셀 파일이 다운로드되었습니다.\n곧 메일 작성 화면이 열리면, 방금 다운로드된 파일을 첨부한 후 보내주세요."
+    );
+
+    const to = recipientEmail.trim();
+    window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
   return (
     <div className="min-h-screen bg-stone-100 text-stone-800 text-base pb-28 print:bg-white print:pb-0">
       <div className="max-w-4xl mx-auto px-4 py-8 print:p-0 print:max-w-none">
@@ -568,7 +611,17 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-end gap-3 mt-5 print:hidden">
+        <div className="mt-5 print:hidden bg-white border border-stone-300 rounded-lg overflow-hidden">
+          <InfoField
+            label="이메일"
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+            type="email"
+            placeholder="받는사람 이메일 (예: example@company.com)"
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row justify-end gap-3 mt-3 print:hidden">
           <button
             onClick={resetAll}
             className="flex items-center justify-center gap-2 text-base text-stone-600 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
@@ -580,6 +633,12 @@ export default function App() {
             className="flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
           >
             <Eye size={18} /> 엑셀 미리보기
+          </button>
+          <button
+            onClick={sendByEmail}
+            className="flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
+          >
+            <Mail size={18} /> 메일로 보내기
           </button>
           <button
             onClick={exportToExcel}
@@ -615,13 +674,15 @@ export default function App() {
   );
 }
 
-function InfoField({ label, value, onChange, accent }) {
+function InfoField({ label, value, onChange, accent, type = "text", placeholder }) {
   return (
     <div className="flex items-stretch">
       <div className="shrink-0 w-28 sm:w-36 flex items-center justify-center bg-stone-100 text-stone-600 text-sm sm:text-base font-medium px-2 py-3 text-center">
         {label}
       </div>
       <input
+        type={type}
+        placeholder={placeholder}
         className={
           "flex-1 min-w-0 outline-none px-3 py-3 text-base print:bg-transparent " +
           (accent ? "bg-amber-50 focus:bg-amber-100" : "bg-white focus:bg-stone-50")
