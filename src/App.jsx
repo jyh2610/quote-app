@@ -159,7 +159,7 @@ export default function App() {
       gs.map((g) =>
         g.id !== groupId
           ? g
-          : { ...g, items: [...g.items, seedItem("", "족", "", "1")] }
+          : { ...g, items: [...g.items, seedItem("", "족", "", "")] }
       )
     );
   };
