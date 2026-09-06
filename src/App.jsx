@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Printer, RotateCcw } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet, RotateCcw } from "lucide-react";
+import * as XLSX from "xlsx";
 
 let uidCounter = 1;
 const uid = () => uidCounter++;
@@ -154,6 +155,50 @@ export default function App() {
   const freightNum = num(freight);
   const marginAmount = (productionCost + freightNum) * (num(marginRate) / 100);
   const supplyAmount = productionCost + freightNum + marginAmount;
+
+  const exportToExcel = () => {
+    const rows = [
+      ["견 적 서"],
+      [],
+      ["품명", header.productName, "", "등록번호", header.regNo],
+      ["STYLE No", header.styleNo, "", "상호", header.company],
+      ["발주량", header.orderQty, "", "성명", header.ceoName],
+      ["COLOR", header.color, "", "업태", header.bizType],
+      ["종목", header.category, "", "사업장주소", header.address],
+      [],
+    ];
+
+    groups.forEach((g) => {
+      rows.push([`${g.major} / ${g.sub}`]);
+      rows.push(["품목", "소재", "단가", "소요량", "금액"]);
+      g.items.forEach((it) => {
+        rows.push([
+          it.name,
+          it.unit,
+          num(it.price),
+          num(it.qty),
+          Math.round(itemAmount(it, header.orderQty)),
+        ]);
+      });
+      rows.push(["", "", "", "소계", Math.round(groupSubtotal(g))]);
+      rows.push([]);
+    });
+
+    rows.push(["생산원가", "", "", "", Math.round(productionCost)]);
+    rows.push(["운임비", "", "", "", freightNum]);
+    rows.push([`업체마진 (${marginRate}%)`, "", "", "", Math.round(marginAmount)]);
+    rows.push(["공급가액", "", "", "", Math.round(supplyAmount)]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "견적서");
+
+    const filename = header.productName
+      ? `견적서_${header.productName}.xlsx`
+      : "견적서.xlsx";
+    XLSX.writeFile(wb, filename);
+  };
 
   return (
     <div className="min-h-screen bg-stone-100 text-stone-800 pb-24 print:bg-white print:pb-0">
@@ -328,10 +373,10 @@ export default function App() {
             <RotateCcw size={14} /> 초기값으로
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={exportToExcel}
             className="flex items-center gap-1.5 text-sm bg-stone-800 text-white px-4 py-2 rounded-lg hover:bg-stone-700"
           >
-            <Printer size={14} /> 인쇄 / PDF 저장
+            <FileSpreadsheet size={14} /> 엑셀로 저장
           </button>
         </div>
       </div>
