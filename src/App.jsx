@@ -393,9 +393,11 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const sendByEmail = async () => {
-    await exportToExcel();
-
+  const sendByEmail = () => {
+    // Open the mail app as the very first, synchronous thing this click does.
+    // Any await/alert before this point makes mobile browsers stop treating
+    // it as a direct result of the user's tap and silently drop the mailto
+    // navigation (no app chooser, nothing happens).
     const subject = `견적서${header.productName ? ` - ${header.productName}` : ""}${
       header.company ? ` (${header.company})` : ""
     }`;
@@ -411,13 +413,19 @@ export default function App() {
       "",
       "감사합니다.",
     ].join("\n");
-
-    window.alert(
-      "엑셀 파일이 다운로드되었습니다.\n곧 메일 작성 화면이 열리면, 방금 다운로드된 파일을 첨부한 후 보내주세요."
-    );
-
     const to = recipientEmail.trim();
-    window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    // Clicking a real <a href="mailto:..."> is more reliably picked up by
+    // mobile browsers than assigning window.location.href directly.
+    const link = document.createElement("a");
+    link.href = mailtoUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Kick off the download after — it doesn't need the user-gesture context.
+    exportToExcel();
   };
 
   return (
@@ -620,6 +628,10 @@ export default function App() {
             placeholder="받는사람 이메일 (예: example@company.com)"
           />
         </div>
+        <p className="text-sm text-stone-500 mt-2 print:hidden">
+          "메일로 보내기"를 누르면 메일 앱이 열리고 엑셀 파일이 다운로드됩니다. 메일에 다운로드된 파일을 첨부해서 보내주세요.
+          카카오톡·네이버 등 앱 안에서 열었다면 메일 앱이 안 열릴 수 있어요 — 그럴 땐 오른쪽 위 메뉴에서 "다른 브라우저로 열기"를 선택한 뒤 다시 시도해 주세요.
+        </p>
 
         <div className="flex flex-col sm:flex-row justify-end gap-3 mt-3 print:hidden">
           <button
