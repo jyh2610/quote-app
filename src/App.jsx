@@ -120,6 +120,7 @@ export default function App() {
   const [freight, setFreight] = useState("1000");
   const [marginRate, setMarginRate] = useState("15");
   const [showPreview, setShowPreview] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState(() => {
     try {
       return localStorage.getItem(EMAIL_STORAGE_KEY) || "";
@@ -127,6 +128,12 @@ export default function App() {
       return "";
     }
   });
+
+  useEffect(() => {
+    if (!emailCopied) return;
+    const t = setTimeout(() => setEmailCopied(false), 4000);
+    return () => clearTimeout(t);
+  }, [emailCopied]);
 
   useEffect(() => {
     try {
@@ -416,8 +423,22 @@ export default function App() {
     const to = recipientEmail.trim();
     const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
+    // Copy first, while the page still definitely has focus. Clicking the
+    // mailto link right after can blur/hand off the page to the OS, and the
+    // Clipboard API silently fails once focus is gone — so this must happen
+    // before, not after, that click.
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(`제목: ${subject}\n\n${body}`)
+        .then(() => setEmailCopied(true))
+        .catch(() => {});
+    }
+
     // Clicking a real <a href="mailto:..."> is more reliably picked up by
-    // mobile browsers than assigning window.location.href directly.
+    // mobile browsers than assigning window.location.href directly. Not
+    // every mail app (e.g. 네이버메일) registers itself as a mailto handler
+    // though, so the OS chooser may only ever offer Gmail or the phone's
+    // built-in Mail app — the clipboard copy above is the fallback for that.
     const link = document.createElement("a");
     link.href = mailtoUrl;
     document.body.appendChild(link);
@@ -629,9 +650,14 @@ export default function App() {
           />
         </div>
         <p className="text-sm text-stone-500 mt-2 print:hidden">
-          "메일로 보내기"를 누르면 메일 앱이 열리고 엑셀 파일이 다운로드됩니다. 메일에 다운로드된 파일을 첨부해서 보내주세요.
-          카카오톡·네이버 등 앱 안에서 열었다면 메일 앱이 안 열릴 수 있어요 — 그럴 땐 오른쪽 위 메뉴에서 "다른 브라우저로 열기"를 선택한 뒤 다시 시도해 주세요.
+          "메일로 보내기"를 누르면 엑셀 파일이 다운로드되고, 휴대폰에 등록된 메일 앱(주로 Gmail)이 열립니다.
+          네이버메일처럼 목록에 안 뜨는 앱은 제목·본문이 자동으로 복사되니, 그 앱을 직접 열어 붙여넣고 다운로드된 파일만 첨부해 보내면 됩니다.
         </p>
+        {emailCopied && (
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 mt-2 print:hidden">
+            제목과 본문이 복사되었어요. 사용하실 메일 앱을 열어 붙여넣기 해주세요.
+          </p>
+        )}
 
         <div className="flex flex-col sm:flex-row justify-end gap-3 mt-3 print:hidden">
           <button
