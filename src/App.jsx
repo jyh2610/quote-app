@@ -400,11 +400,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const sendByEmail = () => {
-    // Open the mail app as the very first, synchronous thing this click does.
-    // Any await/alert before this point makes mobile browsers stop treating
-    // it as a direct result of the user's tap and silently drop the mailto
-    // navigation (no app chooser, nothing happens).
+  const buildEmailContent = () => {
     const subject = `견적서${header.productName ? ` - ${header.productName}` : ""}${
       header.company ? ` (${header.company})` : ""
     }`;
@@ -420,19 +416,31 @@ export default function App() {
       "",
       "감사합니다.",
     ].join("\n");
+    return { subject, body };
+  };
+
+  // Copying to the clipboard must happen while the page still has focus.
+  // Any subsequent mailto click or window.open hands focus to the OS/a new
+  // tab, and the Clipboard API silently fails once focus is gone — so this
+  // always runs first, before any navigation.
+  const copyEmailToClipboard = (subject, body) => {
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard
+      .writeText(`제목: ${subject}\n\n${body}`)
+      .then(() => setEmailCopied(true))
+      .catch(() => {});
+  };
+
+  const sendByEmail = () => {
+    // Everything here must run synchronously, as a direct result of the
+    // click — an await or alert first makes mobile browsers stop treating
+    // the mailto navigation as user-initiated and silently drop it (no app
+    // chooser, nothing happens).
+    const { subject, body } = buildEmailContent();
+    copyEmailToClipboard(subject, body);
+
     const to = recipientEmail.trim();
     const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    // Copy first, while the page still definitely has focus. Clicking the
-    // mailto link right after can blur/hand off the page to the OS, and the
-    // Clipboard API silently fails once focus is gone — so this must happen
-    // before, not after, that click.
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(`제목: ${subject}\n\n${body}`)
-        .then(() => setEmailCopied(true))
-        .catch(() => {});
-    }
 
     // Clicking a real <a href="mailto:..."> is more reliably picked up by
     // mobile browsers than assigning window.location.href directly. Not
@@ -446,6 +454,16 @@ export default function App() {
     document.body.removeChild(link);
 
     // Kick off the download after — it doesn't need the user-gesture context.
+    exportToExcel();
+  };
+
+  const sendByNaverMail = () => {
+    // Naver Mail doesn't offer a documented way to prefill recipient/subject/
+    // body via URL, so instead: copy the text, open the (always-correct)
+    // Naver Mail inbox in a new tab, and let the user paste it themselves.
+    const { subject, body } = buildEmailContent();
+    copyEmailToClipboard(subject, body);
+    window.open("https://mail.naver.com/", "_blank", "noopener");
     exportToExcel();
   };
 
@@ -650,12 +668,11 @@ export default function App() {
           />
         </div>
         <p className="text-sm text-stone-500 mt-2 print:hidden">
-          "메일로 보내기"를 누르면 엑셀 파일이 다운로드되고, 휴대폰에 등록된 메일 앱(주로 Gmail)이 열립니다.
-          네이버메일처럼 목록에 안 뜨는 앱은 제목·본문이 자동으로 복사되니, 그 앱을 직접 열어 붙여넣고 다운로드된 파일만 첨부해 보내면 됩니다.
+          엑셀 파일이 다운로드되고, 제목·본문은 클립보드에 복사됩니다. 열린 메일 앱(또는 새 탭)에 붙여넣고, 다운로드된 파일을 첨부해서 보내주세요.
         </p>
         {emailCopied && (
           <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 mt-2 print:hidden">
-            제목과 본문이 복사되었어요. 사용하실 메일 앱을 열어 붙여넣기 해주세요.
+            제목과 본문이 복사되었어요. 메일 작성 화면에 붙여넣기 해주세요.
           </p>
         )}
 
@@ -673,10 +690,17 @@ export default function App() {
             <Eye size={18} /> 엑셀 미리보기
           </button>
           <button
+            onClick={sendByNaverMail}
+            className="flex items-center justify-center gap-2 text-base font-medium text-white px-4 py-3 rounded-lg hover:opacity-90"
+            style={{ backgroundColor: "#03C75A" }}
+          >
+            <Mail size={18} /> 네이버메일로 보내기
+          </button>
+          <button
             onClick={sendByEmail}
             className="flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
           >
-            <Mail size={18} /> 메일로 보내기
+            <Mail size={18} /> 다른 메일 앱으로
           </button>
           <button
             onClick={exportToExcel}
