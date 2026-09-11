@@ -6,4 +6,13 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = "https://dvjlzbmosaybzozvcodp.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_xqYwWxnWYbMCDcxjEHuovQ_HwnoqYKS";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    // Keeps the login in localStorage and silently refreshes it, so once
+    // someone signs in on a device they stay signed in on later visits
+    // without seeing the login screen again — until they log out.
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
