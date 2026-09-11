@@ -1,6 +1,18 @@
 import { Fragment, useEffect, useState } from "react";
-import { Plus, Trash2, FileSpreadsheet, RotateCcw, Eye, X, Mail } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  FileSpreadsheet,
+  RotateCcw,
+  Eye,
+  X,
+  Mail,
+  Cloud,
+  FolderOpen,
+  FilePlus2,
+} from "lucide-react";
 import ExcelJS from "exceljs";
+import { supabase } from "./supabaseClient";
 
 let uidCounter = 1;
 const uid = () => uidCounter++;
@@ -129,11 +141,29 @@ export default function App() {
     }
   });
 
+  // Cloud save/load (Supabase) — lets the same set of quotes be reached
+  // from any device, on top of the per-browser localStorage autosave above.
+  const [quoteId, setQuoteId] = useState(null);
+  const [quoteName, setQuoteName] = useState("");
+  const [showQuoteList, setShowQuoteList] = useState(false);
+  const [savedQuotes, setSavedQuotes] = useState([]);
+  const [quoteListLoading, setQuoteListLoading] = useState(false);
+  const [quoteListError, setQuoteListError] = useState("");
+  const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudSaveError, setCloudSaveError] = useState("");
+  const [cloudSaved, setCloudSaved] = useState(false);
+
   useEffect(() => {
     if (!emailCopied) return;
     const t = setTimeout(() => setEmailCopied(false), 4000);
     return () => clearTimeout(t);
   }, [emailCopied]);
+
+  useEffect(() => {
+    if (!cloudSaved) return;
+    const t = setTimeout(() => setCloudSaved(false), 4000);
+    return () => clearTimeout(t);
+  }, [cloudSaved]);
 
   useEffect(() => {
     try {
@@ -202,6 +232,89 @@ export default function App() {
     setGroups(initialGroups);
     setFreight("1000");
     setMarginRate("15");
+    setQuoteId(null);
+    setQuoteName("");
+  };
+
+  const fetchQuoteList = async () => {
+    setQuoteListLoading(true);
+    setQuoteListError("");
+    const { data, error } = await supabase
+      .from("quotes")
+      .select("id, name, updated_at")
+      .order("updated_at", { ascending: false });
+    if (error) {
+      setQuoteListError("목록을 불러오지 못했습니다: " + error.message);
+    } else {
+      setSavedQuotes(data || []);
+    }
+    setQuoteListLoading(false);
+  };
+
+  const openQuoteList = () => {
+    setShowQuoteList(true);
+    fetchQuoteList();
+  };
+
+  const saveQuoteToCloud = async () => {
+    const name = quoteName.trim() || header.productName.trim() || "이름 없는 견적서";
+    setCloudSaving(true);
+    setCloudSaveError("");
+
+    const payload = {
+      name,
+      header,
+      groups,
+      freight,
+      margin_rate: marginRate,
+    };
+
+    const query = quoteId
+      ? supabase.from("quotes").update(payload).eq("id", quoteId).select().single()
+      : supabase.from("quotes").insert(payload).select().single();
+
+    const { data, error } = await query;
+    if (error) {
+      setCloudSaveError("저장하지 못했습니다: " + error.message);
+    } else {
+      setQuoteId(data.id);
+      setQuoteName(data.name);
+      setCloudSaved(true);
+    }
+    setCloudSaving(false);
+  };
+
+  const loadQuoteFromCloud = async (id) => {
+    setQuoteListError("");
+    const { data, error } = await supabase.from("quotes").select("*").eq("id", id).single();
+    if (error) {
+      setQuoteListError("불러오지 못했습니다: " + error.message);
+      return;
+    }
+    setHeader({ ...initialHeader, ...data.header });
+    setGroups(data.groups);
+    (data.groups || []).forEach((g) => {
+      advanceUidPast(g.id);
+      (g.items || []).forEach((it) => advanceUidPast(it.id));
+    });
+    setFreight(data.freight || "1000");
+    setMarginRate(data.margin_rate || "15");
+    setQuoteId(data.id);
+    setQuoteName(data.name);
+    setShowQuoteList(false);
+  };
+
+  const deleteQuoteFromCloud = async (id) => {
+    const { error } = await supabase.from("quotes").delete().eq("id", id);
+    if (error) {
+      setQuoteListError("삭제하지 못했습니다: " + error.message);
+      return;
+    }
+    setSavedQuotes((qs) => qs.filter((q) => q.id !== id));
+    if (id === quoteId) {
+      setQuoteId(null);
+      setQuoteName("");
+    }
   };
 
   const groupSubtotal = (g) =>
@@ -480,6 +593,47 @@ export default function App() {
           </p>
         </div>
 
+        {/* Cloud save/load: keeps a list of quotes in Supabase, reachable from any device */}
+        <div className="bg-white border border-stone-300 rounded-lg mb-6 overflow-hidden print:hidden">
+          <InfoField
+            label="견적서 이름"
+            value={quoteName}
+            onChange={(e) => setQuoteName(e.target.value)}
+            placeholder="예: 모조 앵글부츠 견적"
+          />
+          <div className="flex flex-col sm:flex-row gap-2 p-3 border-t border-stone-200">
+            <button
+              onClick={saveQuoteToCloud}
+              disabled={cloudSaving}
+              className="flex-1 flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-2.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 disabled:opacity-50"
+            >
+              <Cloud size={18} /> {cloudSaving ? "저장 중..." : quoteId ? "저장(업데이트)" : "저장"}
+            </button>
+            <button
+              onClick={openQuoteList}
+              className="flex-1 flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-2.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
+            >
+              <FolderOpen size={18} /> 목록 불러오기
+            </button>
+            {quoteId && (
+              <button
+                onClick={resetAll}
+                className="flex-1 flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-2.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
+              >
+                <FilePlus2 size={18} /> 새 견적서
+              </button>
+            )}
+          </div>
+          {cloudSaveError && (
+            <p className="text-sm text-red-600 px-3 pb-3">{cloudSaveError}</p>
+          )}
+          {cloudSaved && (
+            <p className="text-sm text-green-700 bg-green-50 px-3 py-2 mx-3 mb-3 rounded-md border border-green-200">
+              저장했습니다. 다른 기기에서도 "목록 불러오기"로 열 수 있어요.
+            </p>
+          )}
+        </div>
+
         {/* Header info: one field per line so every label/input lines up in a column */}
         <div className="bg-white border border-stone-300 rounded-lg mb-6 overflow-hidden divide-y divide-stone-200 print:border-stone-800">
           <InfoField label="품명" value={header.productName} onChange={setHeaderField("productName")} />
@@ -732,6 +886,19 @@ export default function App() {
           onDownload={exportToExcel}
         />
       )}
+
+      {showQuoteList && (
+        <QuoteListModal
+          quotes={savedQuotes}
+          loading={quoteListLoading}
+          error={quoteListError}
+          currentQuoteId={quoteId}
+          onClose={() => setShowQuoteList(false)}
+          onLoad={loadQuoteFromCloud}
+          onDelete={deleteQuoteFromCloud}
+          onRefresh={fetchQuoteList}
+        />
+      )}
     </div>
   );
 }
@@ -838,6 +1005,99 @@ function TotalRow({ label, value }) {
     <div className="flex items-center justify-between py-3">
       <span className="text-base text-stone-600">{label}</span>
       <span className="text-base font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function QuoteListModal({ quotes, loading, error, currentQuoteId, onClose, onLoad, onDelete, onRefresh }) {
+  const formatDate = (iso) => {
+    try {
+      return new Date(iso).toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-6 z-50" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg w-full max-w-lg max-h-full flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 shrink-0">
+          <h2 className="text-lg font-semibold text-stone-900">저장된 견적서 목록</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 p-1" aria-label="닫기">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="overflow-auto p-3 sm:p-4">
+          {loading && <p className="text-center text-stone-400 py-8">불러오는 중...</p>}
+          {!loading && error && (
+            <div className="text-center py-8">
+              <p className="text-red-600 text-sm mb-3">{error}</p>
+              <button
+                onClick={onRefresh}
+                className="px-4 py-2 rounded-lg border border-stone-300 text-stone-600 hover:bg-stone-50"
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
+          {!loading && !error && quotes.length === 0 && (
+            <p className="text-center text-stone-400 py-8">저장된 견적서가 없습니다.</p>
+          )}
+          {!loading && !error && quotes.length > 0 && (
+            <ul className="space-y-2">
+              {quotes.map((q) => (
+                <li
+                  key={q.id}
+                  className={
+                    "flex items-center justify-between gap-2 border rounded-lg px-3 py-2.5 " +
+                    (q.id === currentQuoteId
+                      ? "border-amber-400 bg-amber-50"
+                      : "border-stone-200 bg-white")
+                  }
+                >
+                  <button
+                    onClick={() => onLoad(q.id)}
+                    className="flex-1 min-w-0 text-left"
+                  >
+                    <div className="font-medium text-stone-900 truncate">{q.name}</div>
+                    <div className="text-xs text-stone-400">{formatDate(q.updated_at)}</div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`"${q.name}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)) {
+                        onDelete(q.id);
+                      }
+                    }}
+                    className="text-stone-400 hover:text-red-500 p-2 shrink-0"
+                    aria-label="삭제"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex justify-end px-4 py-3 border-t border-stone-200 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-lg border border-stone-300 text-stone-600 hover:bg-stone-50"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
