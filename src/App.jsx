@@ -10,6 +10,7 @@ import {
   Cloud,
   FolderOpen,
   FilePlus2,
+  LogOut,
 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { supabase } from "./supabaseClient";
@@ -120,7 +121,7 @@ function buildQuoteRows(groups) {
   return rows;
 }
 
-export default function App() {
+export default function App({ session }) {
   const [header, setHeader] = useState(loadStoredHeader);
   const [groups, setGroups] = useState(loadStoredGroups);
   const [freight, setFreight] = useState("1000");
@@ -560,9 +561,22 @@ export default function App() {
       <div className="max-w-4xl mx-auto px-4 py-8 print:p-0 print:max-w-none">
         {/* Title */}
         <div className="border-b-4 border-stone-800 pb-3 mb-6">
-          <h1 className="font-serif text-4xl font-bold tracking-wide text-stone-900">
-            견 적 서
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-serif text-4xl font-bold tracking-wide text-stone-900">
+              견 적 서
+            </h1>
+            <div className="flex flex-col items-end gap-0.5 print:hidden shrink-0 pt-2">
+              {session?.user?.email && (
+                <span className="text-xs text-stone-400 truncate max-w-[160px]">{session.user.email}</span>
+              )}
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
+              >
+                <LogOut size={14} /> 로그아웃
+              </button>
+            </div>
+          </div>
           <p className="text-sm text-stone-500 mt-1 print:hidden">
             노란 칸에 숫자를 입력하면 금액이 자동으로 계산됩니다.
           </p>

@@ -12,23 +12,32 @@ create table if not exists public.quotes (
   updated_at timestamptz not null default now()
 );
 
--- No login system: every visitor uses the same public anon key, so RLS is
--- left open (anyone with the key can read/write/delete any row). That's the
--- accepted tradeoff for device-to-device sync without accounts. If this
--- table ever holds sensitive customer data, add auth + narrower policies.
+-- Gated by login (Supabase Auth), not per-user ownership: any signed-in
+-- account can read/write/delete any row, so the whole team shares one quote
+-- list. Accounts are created directly in the dashboard (Authentication ->
+-- Users -> Add user) — there's no sign-up form in the app.
 alter table public.quotes enable row level security;
 
-create policy "public can read quotes" on public.quotes
-  for select using (true);
+drop policy if exists "public can read quotes" on public.quotes;
+drop policy if exists "public can insert quotes" on public.quotes;
+drop policy if exists "public can update quotes" on public.quotes;
+drop policy if exists "public can delete quotes" on public.quotes;
 
-create policy "public can insert quotes" on public.quotes
-  for insert with check (true);
+drop policy if exists "authenticated can read quotes" on public.quotes;
+create policy "authenticated can read quotes" on public.quotes
+  for select using (auth.uid() is not null);
 
-create policy "public can update quotes" on public.quotes
-  for update using (true);
+drop policy if exists "authenticated can insert quotes" on public.quotes;
+create policy "authenticated can insert quotes" on public.quotes
+  for insert with check (auth.uid() is not null);
 
-create policy "public can delete quotes" on public.quotes
-  for delete using (true);
+drop policy if exists "authenticated can update quotes" on public.quotes;
+create policy "authenticated can update quotes" on public.quotes
+  for update using (auth.uid() is not null);
+
+drop policy if exists "authenticated can delete quotes" on public.quotes;
+create policy "authenticated can delete quotes" on public.quotes
+  for delete using (auth.uid() is not null);
 
 -- Keep updated_at current on every edit.
 create or replace function public.set_updated_at()
