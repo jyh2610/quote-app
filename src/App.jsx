@@ -25,16 +25,10 @@ const GROUPS_STORAGE_KEY = "quote-app-groups";
 const EMAIL_STORAGE_KEY = "quote-app-recipient-email";
 
 const initialHeader = {
-  productName: "",
-  regNo: "",
-  styleNo: "",
   company: "",
-  ceoName: "",
+  productionPlace: "",
+  styleNo: "",
   orderQty: "",
-  address: "",
-  color: "",
-  bizType: "",
-  category: "",
 };
 
 const loadStoredHeader = () => {
@@ -257,7 +251,7 @@ export default function App() {
   };
 
   const saveQuoteToCloud = async () => {
-    const name = quoteName.trim() || header.productName.trim() || "이름 없는 견적서";
+    const name = quoteName.trim() || header.company.trim() || "이름 없는 견적서";
     setCloudSaving(true);
     setCloudSaveError("");
 
@@ -376,40 +370,22 @@ export default function App() {
     ws.getRow(1).height = 36;
 
     // Header info block
-    ws.mergeCells("B3:C3");
-    ws.mergeCells("E3:G3");
-    label("A3", "품명");
-    input("B3", header.productName);
-    label("D3", "등록번호");
-    input("E3", header.regNo);
+    ws.mergeCells("B3:D3");
+    ws.mergeCells("F3:G3");
+    label("A3", "업체명");
+    input("B3", header.company);
+    label("E3", "생산처");
+    input("F3", header.productionPlace);
 
-    ws.mergeCells("B4:C4");
-    label("A4", "STYLE No");
+    ws.mergeCells("B4:D4");
+    ws.mergeCells("F4:G4");
+    label("A4", "스타일넘버");
     input("B4", header.styleNo);
-    label("D4", "상호");
-    input("E4", header.company);
-    label("F4", "성명");
-    input("G4", header.ceoName);
-
-    ws.mergeCells("B5:C5");
-    ws.mergeCells("E5:G5");
-    label("A5", "발주량");
-    input("B5", num(header.orderQty), { numeric: true, numFmt: "#,##0" });
-    label("D5", "사업장주소");
-    input("E5", header.address, { align: "left" });
-
-    ws.mergeCells("B6:C6");
-    label("A6", "COLOR");
-    input("B6", header.color);
-    label("D6", "업태");
-    input("E6", header.bizType);
-    label("F6", "종목");
-    input("G6", header.category);
+    label("E4", "발주량");
+    input("F4", num(header.orderQty), { numeric: true, numFmt: "#,##0" });
 
     ws.getRow(3).height = 20;
     ws.getRow(4).height = 20;
-    ws.getRow(5).height = 26;
-    ws.getRow(6).height = 20;
 
     // Column headers
     ws.mergeCells("A8:C8");
@@ -429,7 +405,7 @@ export default function App() {
         setCell(`D${r}`, it.unit);
         input(`E${r}`, num(it.price), { numeric: true, align: "right", numFmt: "#,##0" });
         input(`F${r}`, num(it.qty), { numeric: true, align: "right", numFmt: "#,##0.00" });
-        const formula = it.amortize ? `E${r}*F${r}/$B$5` : `E${r}*F${r}`;
+        const formula = it.amortize ? `E${r}*F${r}/$F$4` : `E${r}*F${r}`;
         setCell(`G${r}`, { formula }, { align: "right", numFmt: "#,##0" });
       } else {
         setCell(`C${r}`, "");
@@ -506,7 +482,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = header.productName ? `견적서_${header.productName}.xlsx` : "견적서.xlsx";
+    a.download = header.company ? `견적서_${header.company}.xlsx` : "견적서.xlsx";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -514,16 +490,15 @@ export default function App() {
   };
 
   const buildEmailContent = () => {
-    const subject = `견적서${header.productName ? ` - ${header.productName}` : ""}${
-      header.company ? ` (${header.company})` : ""
-    }`;
+    const subject = `견적서${header.company ? ` - ${header.company}` : ""}`;
     const body = [
       header.company ? `${header.company} 담당자님께,` : "안녕하세요,",
       "",
       "견적서를 보내드립니다. 첨부된 엑셀 파일을 확인해 주세요.",
       "",
-      `- 품명: ${header.productName || "-"}`,
-      `- STYLE No: ${header.styleNo || "-"}`,
+      `- 업체명: ${header.company || "-"}`,
+      `- 생산처: ${header.productionPlace || "-"}`,
+      `- 스타일넘버: ${header.styleNo || "-"}`,
       `- 발주량: ${header.orderQty || "-"}`,
       `- 공급가액: ${won(supplyAmount)}원`,
       "",
@@ -636,16 +611,10 @@ export default function App() {
 
         {/* Header info: one field per line so every label/input lines up in a column */}
         <div className="bg-white border border-stone-300 rounded-lg mb-6 overflow-hidden divide-y divide-stone-200 print:border-stone-800">
-          <InfoField label="품명" value={header.productName} onChange={setHeaderField("productName")} />
-          <InfoField label="등록번호" value={header.regNo} onChange={setHeaderField("regNo")} />
-          <InfoField label="STYLE No" value={header.styleNo} onChange={setHeaderField("styleNo")} />
-          <InfoField label="상호" value={header.company} onChange={setHeaderField("company")} />
-          <InfoField label="성명" value={header.ceoName} onChange={setHeaderField("ceoName")} />
+          <InfoField label="업체명" value={header.company} onChange={setHeaderField("company")} />
+          <InfoField label="생산처" value={header.productionPlace} onChange={setHeaderField("productionPlace")} />
+          <InfoField label="스타일넘버" value={header.styleNo} onChange={setHeaderField("styleNo")} />
           <InfoField label="발주량" value={header.orderQty} onChange={setHeaderField("orderQty")} accent />
-          <InfoField label="사업장주소" value={header.address} onChange={setHeaderField("address")} />
-          <InfoField label="COLOR" value={header.color} onChange={setHeaderField("color")} />
-          <InfoField label="업태" value={header.bizType} onChange={setHeaderField("bizType")} />
-          <InfoField label="종목" value={header.category} onChange={setHeaderField("category")} />
         </div>
 
         {/* Item groups: a real table per group, columns matching the Excel sheet */}
@@ -1145,32 +1114,16 @@ function ExcelPreviewModal({
                 </td>
               </tr>
               <tr>
-                <td className={LABEL}>품명</td>
-                <td colSpan={2} className={VALUE}>{header.productName}</td>
-                <td className={LABEL}>등록번호</td>
-                <td colSpan={3} className={VALUE}>{header.regNo}</td>
+                <td className={LABEL}>업체명</td>
+                <td colSpan={2} className={VALUE}>{header.company}</td>
+                <td className={LABEL}>생산처</td>
+                <td colSpan={3} className={VALUE}>{header.productionPlace}</td>
               </tr>
               <tr>
-                <td className={LABEL}>STYLE No</td>
+                <td className={LABEL}>스타일넘버</td>
                 <td colSpan={2} className={VALUE}>{header.styleNo}</td>
-                <td className={LABEL}>상호</td>
-                <td className={VALUE}>{header.company}</td>
-                <td className={LABEL}>성명</td>
-                <td className={VALUE}>{header.ceoName}</td>
-              </tr>
-              <tr>
                 <td className={LABEL}>발주량</td>
-                <td colSpan={2} className={VALUE + " text-right"}>{header.orderQty}</td>
-                <td className={LABEL}>사업장주소</td>
-                <td colSpan={3} className={VALUE}>{header.address}</td>
-              </tr>
-              <tr>
-                <td className={LABEL}>COLOR</td>
-                <td colSpan={2} className={VALUE}>{header.color}</td>
-                <td className={LABEL}>업태</td>
-                <td className={VALUE}>{header.bizType}</td>
-                <td className={LABEL}>종목</td>
-                <td className={VALUE}>{header.category}</td>
+                <td colSpan={3} className={VALUE + " text-right"}>{header.orderQty}</td>
               </tr>
               <tr>
                 <td colSpan={3} className={LABEL}>구분</td>
