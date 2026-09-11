@@ -28,7 +28,7 @@ const EMAIL_STORAGE_KEY = "quote-app-recipient-email";
 
 const initialHeader = {
   company: "",
-  productionPlace: "",
+  productionPlace: "오즈",
   styleNo: "",
   orderQty: "",
 };
@@ -37,7 +37,10 @@ const loadStoredHeader = () => {
   try {
     const raw = localStorage.getItem(HEADER_STORAGE_KEY);
     if (!raw) return initialHeader;
-    return { ...initialHeader, ...JSON.parse(raw) };
+    const merged = { ...initialHeader, ...JSON.parse(raw) };
+    // 생산처 defaults to 오즈 even for saves made before that default existed.
+    if (!merged.productionPlace) merged.productionPlace = initialHeader.productionPlace;
+    return merged;
   } catch {
     return initialHeader;
   }
