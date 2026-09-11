@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Plus,
   Trash2,
@@ -11,6 +11,7 @@ import {
   FolderOpen,
   FilePlus2,
   LogOut,
+  Upload,
 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { supabase } from "./supabaseClient";
@@ -121,6 +122,130 @@ function buildQuoteRows(groups) {
   return rows;
 }
 
+// Field labels the header block might use, mapped to our current header
+// keys. Includes the older 10-field layout (품명/등록번호/성명/COLOR/...)
+// so files exported before the header was simplified still import cleanly
+// — whatever old fields don't have a home in the current model are just
+// dropped, everything else (all item data) is unaffected either way.
+const HEADER_LABEL_MAP = {
+  업체명: "company",
+  상호: "company",
+  생산처: "productionPlace",
+  스타일넘버: "styleNo",
+  "STYLE No": "styleNo",
+  발주량: "orderQty",
+};
+
+// Normalizes any ExcelJS cell value (plain string/number, rich text with
+// mixed fonts, formula result, hyperlink, ...) into plain text.
+function cellText(v) {
+  if (v == null) return "";
+  if (typeof v === "object") {
+    if (Array.isArray(v.richText)) return v.richText.map((t) => t.text).join("").trim();
+    if (v.text != null) return String(v.text).trim();
+    if (v.result != null) return String(v.result).trim();
+    return "";
+  }
+  return String(v).trim();
+}
+
+function findLabelCell(ws, labelText, maxRow = 60, maxCol = 7) {
+  for (let r = 1; r <= maxRow; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= maxCol; c++) {
+      if (cellText(row.getCell(c).value) === labelText) {
+        return { row, col: c };
+      }
+    }
+  }
+  return null;
+}
+
+async function parseQuoteExcelFile(file) {
+  const buffer = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+  if (!ws) throw new Error("시트를 찾을 수 없습니다.");
+
+  const header = { ...initialHeader };
+  for (let r = 1; r <= 8; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= 7; c++) {
+      const mapped = HEADER_LABEL_MAP[cellText(row.getCell(c).value)];
+      if (!mapped) continue;
+      header[mapped] = cellText(row.getCell(c + 1).value);
+    }
+  }
+
+  const gubunHit = findLabelCell(ws, "구분");
+  if (!gubunHit) throw new Error("견적서 형식을 알아볼 수 없습니다.");
+  const itemsStartRow = gubunHit.row.number + 1;
+
+  const productionCostHit = findLabelCell(ws, "생산원가", 200);
+  const itemsEndRow = productionCostHit ? productionCostHit.row.number : itemsStartRow;
+
+  let freight = "1000";
+  const freightHit = findLabelCell(ws, "운임비", 200);
+  if (freightHit) {
+    const v = freightHit.row.getCell(7).value;
+    if (v != null && v !== "") freight = String(v);
+  }
+
+  let marginRate = "15";
+  const marginHit = findLabelCell(ws, "업체마진", 200);
+  if (marginHit) {
+    const v = marginHit.row.getCell(6).value;
+    if (typeof v === "number") marginRate = String(Math.round(v * 100));
+  }
+
+  // Merged cells report the same value on every row they span, so "is this
+  // row's cell non-empty" alone can't tell a new major/sub group apart from
+  // a continuation row — only the true top-left (master) cell of a merge
+  // marks where a group actually starts.
+  const groups = [];
+  let currentGroup = null;
+  for (let r = itemsStartRow; r < itemsEndRow; r++) {
+    const row = ws.getRow(r);
+    const majorCell = row.getCell(1);
+    const subCell = row.getCell(2);
+    const isNewSub = subCell.master === subCell && cellText(subCell.value) !== "";
+
+    if (isNewSub) {
+      const isNewMajor = majorCell.master === majorCell && cellText(majorCell.value) !== "";
+      currentGroup = {
+        id: uid(),
+        major: isNewMajor ? cellText(majorCell.value) : groups.length ? groups[groups.length - 1].major : "",
+        sub: cellText(subCell.value),
+        items: [],
+      };
+      groups.push(currentGroup);
+    }
+    if (!currentGroup) continue;
+
+    const name = cellText(row.getCell(3).value);
+    const unit = cellText(row.getCell(4).value);
+    const price = cellText(row.getCell(5).value);
+    const qty = cellText(row.getCell(6).value);
+    const hasItem = name !== "" || unit !== "" || price !== "" || qty !== "";
+    if (!hasItem) continue;
+
+    const formula = row.getCell(7).formula || "";
+    currentGroup.items.push({
+      id: uid(),
+      name,
+      unit,
+      price,
+      qty,
+      amortize: formula.includes("/"),
+    });
+  }
+
+  if (groups.length === 0) throw new Error("품목 데이터를 찾을 수 없습니다.");
+
+  return { header, groups, freight, marginRate };
+}
+
 export default function App({ session }) {
   const [header, setHeader] = useState(loadStoredHeader);
   const [groups, setGroups] = useState(loadStoredGroups);
@@ -229,6 +354,34 @@ export default function App({ session }) {
     setMarginRate("15");
     setQuoteId(null);
     setQuoteName("");
+  };
+
+  const fileInputRef = useRef(null);
+
+  const handleExcelFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    if (
+      !window.confirm(
+        "엑셀 파일을 불러오면 현재 화면의 내용을 덮어씁니다. 계속할까요?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const parsed = await parseQuoteExcelFile(file);
+      setHeader(parsed.header);
+      setGroups(parsed.groups);
+      setFreight(parsed.freight);
+      setMarginRate(parsed.marginRate);
+      setQuoteId(null);
+      setQuoteName("");
+    } catch (err) {
+      window.alert("엑셀 파일을 불러오지 못했습니다: " + err.message);
+    }
   };
 
   const fetchQuoteList = async () => {
@@ -814,11 +967,24 @@ export default function App({ session }) {
         )}
 
         <div className="flex flex-col sm:flex-row justify-end gap-3 mt-3 print:hidden">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xlsm"
+            onChange={handleExcelFileSelected}
+            className="hidden"
+          />
           <button
             onClick={resetAll}
             className="flex items-center justify-center gap-2 text-base text-stone-600 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
           >
             <RotateCcw size={18} /> 초기값으로
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center gap-2 text-base text-stone-700 hover:text-stone-900 px-4 py-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50"
+          >
+            <Upload size={18} /> 엑셀 불러오기
           </button>
           <button
             onClick={() => setShowPreview(true)}
