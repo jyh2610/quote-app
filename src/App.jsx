@@ -560,7 +560,11 @@ export default function App({ session }) {
         input(`E${r}`, num(it.price), { numeric: true, align: "right", numFmt: "#,##0" });
         input(`F${r}`, num(it.qty), { numeric: true, align: "right", numFmt: "#,##0.00" });
         const formula = it.amortize ? `E${r}*F${r}/$F$4` : `E${r}*F${r}`;
-        setCell(`G${r}`, { formula }, { align: "right", numFmt: "#,##0" });
+        setCell(
+          `G${r}`,
+          { formula, result: Math.round(itemAmount(it, header.orderQty)) },
+          { align: "right", numFmt: "#,##0" }
+        );
       } else {
         setCell(`C${r}`, "");
         setCell(`D${r}`, "");
@@ -586,7 +590,11 @@ export default function App({ session }) {
     const pcRow = r;
     ws.mergeCells(`A${pcRow}:F${pcRow}`);
     label(`A${pcRow}`, "생산원가", { fill: LGRAY });
-    setCell(`G${pcRow}`, { formula: `SUM(G9:G${lastItemRow})` }, { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" });
+    setCell(
+      `G${pcRow}`,
+      { formula: `SUM(G9:G${lastItemRow})`, result: Math.round(productionCost) },
+      { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" }
+    );
     r++;
 
     const frRow = r;
@@ -599,7 +607,11 @@ export default function App({ session }) {
     ws.mergeCells(`A${mgRow}:E${mgRow}`);
     label(`A${mgRow}`, "업체마진", { fill: LGRAY });
     input(`F${mgRow}`, num(marginRate) / 100, { numeric: true, numFmt: "0%" });
-    setCell(`G${mgRow}`, { formula: `(G${pcRow}+G${frRow})*F${mgRow}` }, { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" });
+    setCell(
+      `G${mgRow}`,
+      { formula: `(G${pcRow}+G${frRow})*F${mgRow}`, result: Math.round(marginAmount) },
+      { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" }
+    );
     r += 2; // spacer row
 
     // DESIGN / 기타사항 / 공급가액 block
@@ -616,7 +628,7 @@ export default function App({ session }) {
     ws.mergeCells(`F${designRow + 1}:G${designRow + 1}`);
     setCell(
       `F${designRow + 1}`,
-      { formula: `G${pcRow}+G${frRow}+G${mgRow}` },
+      { formula: `G${pcRow}+G${frRow}+G${mgRow}`, result: Math.round(supplyAmount) },
       { bold: true, fill: LGRAY, align: "right", numFmt: "#,##0" }
     );
 
