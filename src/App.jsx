@@ -12,6 +12,7 @@ import {
   FilePlus2,
   LogOut,
   Upload,
+  Share2,
 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { supabase } from "./supabaseClient";
@@ -256,6 +257,7 @@ export default function App({ session }) {
   const [marginRate, setMarginRate] = useState("15");
   const [showPreview, setShowPreview] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
+  const [canShareFile, setCanShareFile] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState(() => {
     try {
       return localStorage.getItem(EMAIL_STORAGE_KEY) || "";
@@ -281,6 +283,10 @@ export default function App({ session }) {
     const t = setTimeout(() => setEmailCopied(false), 4000);
     return () => clearTimeout(t);
   }, [emailCopied]);
+
+  useEffect(() => {
+    setCanShareFile(canShareExcel());
+  }, []);
 
   useEffect(() => {
     if (!cloudSaved) return;
@@ -476,7 +482,7 @@ export default function App({ session }) {
   const marginAmount = (productionCost + freightNum) * (num(marginRate) / 100);
   const supplyAmount = productionCost + freightNum + marginAmount;
 
-  const exportToExcel = async () => {
+  const buildQuoteWorkbookBuffer = async () => {
     const FONT = "맑은 고딕";
     const GRAY = "FFD9D9D9";
     const LGRAY = "FFF2F2F2";
@@ -645,17 +651,55 @@ export default function App({ session }) {
     ws.getRow(noteRow).height = 26;
 
     const buffer = await wb.xlsx.writeBuffer();
+    const filename = header.company ? `견적서_${header.company}.xlsx` : "견적서.xlsx";
+    return { buffer, filename };
+  };
+
+  const exportToExcel = async () => {
+    const { buffer, filename } = await buildQuoteWorkbookBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = header.company ? `견적서_${header.company}.xlsx` : "견적서.xlsx";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // Web Share API with a file: on mobile this opens the native share sheet,
+  // where Gmail/네이버메일/카카오톡 etc. show up as targets and receive the
+  // file already attached — the only way to skip the "download, then attach
+  // by hand" step, since mailto: can never carry a file (no browser allows
+  // a web page to inject an attachment into an email link).
+  const canShareExcel = () => {
+    if (!navigator.canShare) return false;
+    try {
+      const probe = new File([""], "probe.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      return navigator.canShare({ files: [probe] });
+    } catch {
+      return false;
+    }
+  };
+
+  const shareQuoteExcel = async () => {
+    try {
+      const { buffer, filename } = await buildQuoteWorkbookBuffer();
+      const file = new File([buffer], filename, {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const { subject, body } = buildEmailContent();
+      await navigator.share({ files: [file], title: subject, text: body });
+    } catch (err) {
+      if (err?.name !== "AbortError") {
+        window.alert("공유하지 못했습니다: " + err.message);
+      }
+    }
   };
 
   const buildEmailContent = () => {
@@ -1007,6 +1051,14 @@ export default function App({ session }) {
           >
             <Eye size={18} /> 엑셀 미리보기
           </button>
+          {canShareFile && (
+            <button
+              onClick={shareQuoteExcel}
+              className="flex items-center justify-center gap-2 text-base font-medium text-white px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700"
+            >
+              <Share2 size={18} /> 파일 첨부해서 공유
+            </button>
+          )}
           <button
             onClick={sendByNaverMail}
             className="flex items-center justify-center gap-2 text-base font-medium text-white px-4 py-3 rounded-lg hover:opacity-90"
