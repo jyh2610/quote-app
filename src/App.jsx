@@ -11,11 +11,14 @@ import {
   FolderOpen,
   FilePlus2,
   LogOut,
+  Settings,
   Upload,
   Share2,
 } from "lucide-react";
 import ExcelJS from "exceljs";
+import { Link } from "react-router-dom";
 import { supabase } from "./supabaseClient";
+import { num, won, itemAmount, computeQuoteTotals } from "./quoteMath";
 
 let uidCounter = 1;
 const uid = () => uidCounter++;
@@ -80,19 +83,6 @@ const loadStoredGroups = () => {
     return initialGroups;
   }
 };
-
-const num = (v) => {
-  const n = parseFloat(String(v).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
-};
-
-const won = (v) =>
-  Math.round(v).toLocaleString("ko-KR", { maximumFractionDigits: 0 });
-
-function itemAmount(item, orderQty) {
-  const amt = num(item.price) * num(item.qty);
-  return item.amortize ? amt / (num(orderQty) || 1) : amt;
-}
 
 // Flattens groups into item rows, marking where the major/sub columns
 // should start a merged span. Shared by the Excel export and the preview
@@ -477,10 +467,12 @@ export default function App({ session }) {
   const groupSubtotal = (g) =>
     g.items.reduce((sum, it) => sum + itemAmount(it, header.orderQty), 0);
 
-  const productionCost = groups.reduce((sum, g) => sum + groupSubtotal(g), 0);
-  const freightNum = num(freight);
-  const marginAmount = (productionCost + freightNum) * (num(marginRate) / 100);
-  const supplyAmount = productionCost + freightNum + marginAmount;
+  const { productionCost, freightNum, marginAmount, supplyAmount } = computeQuoteTotals(
+    header,
+    groups,
+    freight,
+    marginRate
+  );
 
   const buildQuoteWorkbookBuffer = async () => {
     const FONT = "맑은 고딕";
@@ -781,12 +773,20 @@ export default function App({ session }) {
               {session?.user?.email && (
                 <span className="text-xs text-stone-400 truncate max-w-[160px]">{session.user.email}</span>
               )}
-              <button
-                onClick={() => supabase.auth.signOut()}
-                className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
-              >
-                <LogOut size={14} /> 로그아웃
-              </button>
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/admin"
+                  className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
+                >
+                  <Settings size={14} /> 관리
+                </Link>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
+                >
+                  <LogOut size={14} /> 로그아웃
+                </button>
+              </div>
             </div>
           </div>
           <p className="text-sm text-stone-500 mt-1 print:hidden">

@@ -52,3 +52,27 @@ drop trigger if exists quotes_set_updated_at on public.quotes;
 create trigger quotes_set_updated_at
   before update on public.quotes
   for each row execute function public.set_updated_at();
+
+-- Email address book, used by the "관리" (admin) page. Same shared-team
+-- access model as quotes: any signed-in account can read/write/delete any
+-- row.
+create table if not exists public.contacts (
+  id uuid primary key default gen_random_uuid(),
+  label text not null default '',
+  email text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.contacts enable row level security;
+
+drop policy if exists "authenticated can read contacts" on public.contacts;
+create policy "authenticated can read contacts" on public.contacts
+  for select using (auth.uid() is not null);
+
+drop policy if exists "authenticated can insert contacts" on public.contacts;
+create policy "authenticated can insert contacts" on public.contacts
+  for insert with check (auth.uid() is not null);
+
+drop policy if exists "authenticated can delete contacts" on public.contacts;
+create policy "authenticated can delete contacts" on public.contacts
+  for delete using (auth.uid() is not null);
